@@ -14,12 +14,23 @@ export const PipelineOptionsSchema = z.object({
 			z.record(
 				z.union([
 					z.string(),
-					z.object({
-						pipeline: z.string(),
-						remoteProxyConnectionString: z
-							.custom<RemoteProxyConnectionString>()
-							.optional(),
-					}),
+					z
+						.object({
+							stream: z.string().optional(),
+							/** @deprecated Use `stream` instead. */
+							pipeline: z.string().optional(),
+							remoteProxyConnectionString: z
+								.custom<RemoteProxyConnectionString>()
+								.optional(),
+						})
+						.refine(
+							({ stream, pipeline }) => {
+								return stream !== undefined || pipeline !== undefined;
+							},
+							{
+								message: "Stream or pipeline (deprecated) must be defined",
+							}
+						),
 				])
 			),
 			z.string().array(),
@@ -79,7 +90,9 @@ function bindingEntries(
 				string,
 				| string
 				| {
-						pipeline: string;
+						stream?: string;
+						/** @deprecated Use `stream` instead. */
+						pipeline?: string;
 						remoteProxyConnectionString?: RemoteProxyConnectionString;
 				  }
 		  >
@@ -97,7 +110,8 @@ function bindingEntries(
 				(
 					| string
 					| {
-							pipeline: string;
+							stream?: string;
+							pipeline?: string;
 							remoteProxyConnectionString?: RemoteProxyConnectionString;
 					  }
 				),
@@ -107,7 +121,7 @@ function bindingEntries(
 			typeof opts === "string"
 				? { id: opts }
 				: {
-						id: opts.pipeline,
+						id: opts.stream ?? opts.pipeline ?? "",
 						remoteProxyConnectionString: opts.remoteProxyConnectionString,
 					},
 		]);
