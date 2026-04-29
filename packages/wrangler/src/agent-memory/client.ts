@@ -1,5 +1,5 @@
 // TODO(agent-memory): migrate this client to the Cloudflare TypeScript SDK
-// once it covers the /agentmemory endpoints. Using `fetchResult` directly for
+// once it covers the /agent-memory endpoints. Using `fetchResult` directly for
 // now, matching the current precedent for other products that pre-date the
 // SDK support (see `src/ai-search/client.ts`).
 import { fetchListResult, fetchResult } from "../cfetch";
@@ -30,7 +30,7 @@ export async function createNamespaceRequest(
 ): Promise<AgentMemoryNamespace> {
 	return await fetchResult<AgentMemoryNamespace>(
 		complianceConfig,
-		`/accounts/${accountId}/agentmemory/namespaces`,
+		`/accounts/${accountId}/agent-memory/namespaces`,
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -45,7 +45,7 @@ export async function listNamespacesRequest(
 ): Promise<AgentMemoryNamespace[]> {
 	return await fetchListResult<AgentMemoryNamespace>(
 		complianceConfig,
-		`/accounts/${accountId}/agentmemory/namespaces`
+		`/accounts/${accountId}/agent-memory/namespaces`
 	);
 }
 
@@ -56,7 +56,7 @@ export async function getNamespaceRequest(
 ): Promise<AgentMemoryNamespace> {
 	return await fetchResult<AgentMemoryNamespace>(
 		complianceConfig,
-		`/accounts/${accountId}/agentmemory/namespaces/${namespaceName}`
+		`/accounts/${accountId}/agent-memory/namespaces/${namespaceName}`
 	);
 }
 
@@ -67,7 +67,7 @@ export async function deleteNamespaceRequest(
 ): Promise<void> {
 	await fetchResult<void>(
 		complianceConfig,
-		`/accounts/${accountId}/agentmemory/namespaces/${namespaceName}`,
+		`/accounts/${accountId}/agent-memory/namespaces/${namespaceName}`,
 		{ method: "DELETE" }
 	);
 }
