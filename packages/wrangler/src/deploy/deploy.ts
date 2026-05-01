@@ -48,6 +48,7 @@ import {
 import { getFlag } from "../experimental-flags";
 import isInteractive, { isNonInteractiveOrCI } from "../is-interactive";
 import { logger } from "../logger";
+import { verifyWorkerMatchesCITag } from "../match-tag";
 import { getMetricsUsageHeaders } from "../metrics";
 import { isNavigatorDefined } from "../navigator-user-agent";
 import { getWranglerTmpDir } from "../paths";
@@ -81,11 +82,10 @@ import { checkWorkflowConflicts } from "./check-workflow-conflicts";
 import { getConfigPatch, getRemoteConfigDiff } from "./config-diffs";
 import type { StartDevWorkerInput } from "../api/startDevWorker/types";
 import type { AssetsOptions } from "../assets";
-import type { Entry } from "../deployment-bundle/entry";
 import type { PostTypedConsumerBody } from "../queues/client";
-import type { LegacyAssetPaths } from "../sites";
 import type { RetrieveSourceMapFunction } from "../sourcemap";
 import type { ApiVersion, Percentage, VersionId } from "../versions/types";
+import type { DeployProps } from "./shared";
 import type {
 	CfModule,
 	CfScriptFormat,
@@ -99,49 +99,6 @@ import type {
 	ZoneNameRoute,
 } from "@cloudflare/workers-utils";
 import type { FormData } from "undici";
-
-type Props = {
-	config: Config;
-	accountId: string | undefined;
-	entry: Entry;
-	rules: Config["rules"];
-	name: string;
-	env: string | undefined;
-	compatibilityDate: string | undefined;
-	compatibilityFlags: string[] | undefined;
-	legacyAssetPaths: LegacyAssetPaths | undefined;
-	assetsOptions: AssetsOptions | undefined;
-	vars: Record<string, string> | undefined;
-	defines: Record<string, string> | undefined;
-	alias: Record<string, string> | undefined;
-	triggers: string[] | undefined;
-	routes: string[] | undefined;
-	domains: string[] | undefined;
-	/** Deprecated service environments.*/
-	useServiceEnvironments: boolean | undefined;
-	jsxFactory: string | undefined;
-	jsxFragment: string | undefined;
-	tsconfig: string | undefined;
-	isWorkersSite: boolean;
-	minify: boolean | undefined;
-	outDir: string | undefined;
-	outFile: string | undefined;
-	dryRun: boolean | undefined;
-	noBundle: boolean | undefined;
-	keepVars: boolean | undefined;
-	logpush: boolean | undefined;
-	uploadSourceMaps: boolean | undefined;
-	oldAssetTtl: number | undefined;
-	projectRoot: string | undefined;
-	dispatchNamespace: string | undefined;
-	experimentalAutoCreate: boolean;
-	metafile: string | boolean | undefined;
-	containersRollout: "immediate" | "gradual" | undefined;
-	strict: boolean | undefined;
-	tag: string | undefined;
-	message: string | undefined;
-	secretsFile: string | undefined;
-};
 
 export type RouteObject = ZoneIdRoute | ZoneNameRoute | CustomDomainRoute;
 
@@ -426,7 +383,7 @@ function addWorkersSitesBindings(
 	return withSites;
 }
 
-export default async function deploy(props: Props): Promise<{
+export default async function deploy(props: DeployProps): Promise<{
 	sourceMapSize?: number;
 	versionId: string | null;
 	workerTag: string | null;
@@ -436,6 +393,11 @@ export default async function deploy(props: Props): Promise<{
 
 	// TODO: warn if git/hg has uncommitted changes
 	const { config, accountId, name, entry } = props;
+
+	if (!props.dryRun) {
+		assert(accountId, "Missing account ID");
+		await verifyWorkerMatchesCITag(config, accountId, name, config.configPath);
+	}
 	let workerTag: string | null = null;
 	let versionId: string | null = null;
 	let tags: string[] = []; // arbitrary metadata tags, not to be confused with script tag or annotations
@@ -446,9 +408,7 @@ export default async function deploy(props: Props): Promise<{
 		pattern: domain,
 		custom_domain: true,
 	}));
-	const routes =
-		props.routes ?? config.routes ?? (config.route ? [config.route] : []);
-	const allDeploymentRoutes = [...routes, ...domainRoutes];
+	const allDeploymentRoutes = [...props.routes, ...domainRoutes];
 
 	if (!props.dispatchNamespace && accountId) {
 		try {
@@ -566,12 +526,7 @@ export default async function deploy(props: Props): Promise<{
 		}
 	}
 
-	const compatibilityDate =
-		props.compatibilityDate ?? config.compatibility_date;
-	const compatibilityFlags =
-		props.compatibilityFlags ?? config.compatibility_flags;
-
-	if (!compatibilityDate) {
+	if (!props.compatibilityDate) {
 		const compatibilityDateStr = getTodaysCompatDate();
 
 		throw new UserError(
@@ -587,22 +542,14 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 
 	validateRoutes(allDeploymentRoutes, props.assetsOptions);
 
-	const jsxFactory = props.jsxFactory || config.jsx_factory;
-	const jsxFragment = props.jsxFragment || config.jsx_fragment;
-	const keepVars = props.keepVars || config.keep_vars;
-
-	const minify = props.minify ?? config.minify;
-
 	const nodejsCompatMode = validateNodeCompatMode(
-		compatibilityDate,
-		compatibilityFlags,
-		{
-			noBundle: props.noBundle ?? config.no_bundle,
-		}
+		props.compatibilityDate,
+		props.compatibilityFlags,
+		{ noBundle: props.noBundle }
 	);
 
 	// Warn if user tries minify with no-bundle
-	if (props.noBundle && minify) {
+	if (props.noBundle && props.minify) {
 		logger.warn(
 			"`--minify` and `--no-bundle` can't be used together. If you want to minify your Worker and disable Wrangler's bundling, please minify as part of your own bundling process."
 		);
@@ -726,9 +673,6 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 			rules: props.rules,
 			preserveFileNames: config.preserve_file_names ?? false,
 		});
-		const uploadSourceMaps =
-			props.uploadSourceMaps ?? config.upload_source_maps;
-
 		const {
 			modules,
 			dependencies,
@@ -752,26 +696,26 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 						moduleCollector,
 						doBindings: config.durable_objects.bindings,
 						workflowBindings: config.workflows ?? [],
-						jsxFactory,
-						jsxFragment,
-						tsconfig: props.tsconfig ?? config.tsconfig,
-						minify,
+						jsxFactory: props.jsxFactory,
+						jsxFragment: props.jsxFragment,
+						tsconfig: props.tsconfig,
+						minify: props.minify,
 						keepNames: config.keep_names ?? true,
-						sourcemap: uploadSourceMaps,
+						sourcemap: props.uploadSourceMaps,
 						nodejsCompatMode,
-						compatibilityDate,
-						compatibilityFlags,
-						define: { ...config.define, ...props.defines },
+						compatibilityDate: props.compatibilityDate,
+						compatibilityFlags: props.compatibilityFlags,
+						define: props.defines,
 						checkFetch: false,
-						alias: config.alias,
+						alias: props.alias,
 						// We want to know if the build is for development or publishing
 						// This could potentially cause issues as we no longer have identical behaviour between dev and deploy?
 						targetConsumer: "deploy",
 						local: false,
 						projectRoot: props.projectRoot,
 						defineNavigatorUserAgent: isNavigatorDefined(
-							compatibilityDate,
-							compatibilityFlags
+							props.compatibilityDate,
+							props.compatibilityFlags
 						),
 						plugins: [logBuildOutput(nodejsCompatMode)],
 
@@ -849,7 +793,7 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 		const bindings = getBindings(config);
 
 		// Vars from the CLI (--var) are hidden so their values aren't logged to the terminal
-		for (const [bindingName, value] of Object.entries(props.vars ?? {})) {
+		for (const [bindingName, value] of Object.entries(props.vars)) {
 			bindings[bindingName] = {
 				type: "plain_text",
 				value,
@@ -900,14 +844,14 @@ See https://developers.cloudflare.com/workers/platform/compatibility-dates for m
 			migrations,
 			modules,
 			containers: config.containers,
-			sourceMaps: uploadSourceMaps
+			sourceMaps: props.uploadSourceMaps
 				? loadSourceMaps(main, modules, bundle)
 				: undefined,
-			compatibility_date: compatibilityDate,
-			compatibility_flags: compatibilityFlags,
-			keepVars,
-			keepSecrets: keepVars || !!props.secretsFile,
-			logpush: props.logpush !== undefined ? props.logpush : config.logpush,
+			compatibility_date: props.compatibilityDate,
+			compatibility_flags: props.compatibilityFlags,
+			keepVars: props.keepVars,
+			keepSecrets: props.keepVars || !!props.secretsFile,
+			logpush: props.logpush,
 			placement,
 			tail_consumers: config.tail_consumers,
 			streaming_tail_consumers: config.streaming_tail_consumers,

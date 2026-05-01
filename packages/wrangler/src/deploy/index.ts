@@ -1,13 +1,7 @@
-import assert from "node:assert";
 import { statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import {
-	getTodaysCompatDate,
-	getCIOverrideName,
-	UserError,
-} from "@cloudflare/workers-utils";
+import { getTodaysCompatDate, UserError } from "@cloudflare/workers-utils";
 import chalk from "chalk";
-import { getAssetsOptions, validateAssetsArgsAndConfig } from "../assets";
 import { getDetailsForAutoConfig } from "../autoconfig/details";
 import { runAutoConfig } from "../autoconfig/run";
 import {
@@ -16,22 +10,14 @@ import {
 } from "../autoconfig/telemetry-utils";
 import { readConfig } from "../config";
 import { createCommand } from "../core/create-command";
-import { getEntry } from "../deployment-bundle/entry";
 import { confirm, prompt } from "../dialogs";
 import { isNonInteractiveOrCI } from "../is-interactive";
 import { logger } from "../logger";
-import { verifyWorkerMatchesCITag } from "../match-tag";
 import * as metrics from "../metrics";
 import { writeOutput } from "../output";
-import { getSiteAssetPaths } from "../sites";
-import { requireAuth } from "../user";
-import { collectKeyValues } from "../utils/collectKeyValues";
-import { getRules } from "../utils/getRules";
-import { getScriptName } from "../utils/getScriptName";
-import { useServiceEnvironments } from "../utils/useServiceEnvironments";
 import deploy from "./deploy";
 import { maybeDelegateToOpenNextDeployCommand } from "./open-next";
-import { validateArgs } from "./shared";
+import { mergeDeployConfigAndArgs, validateArgs } from "./shared";
 
 export const deployCommand = createCommand({
 	metadata: {
@@ -408,121 +394,28 @@ export const deployCommand = createCommand({
 			}
 		}
 
-		const entry = await getEntry(args, config, "deploy");
-		validateAssetsArgsAndConfig(args, config);
-
-		const assetsOptions = getAssetsOptions({
-			args,
-			config,
-		});
-
-		const cliVars = collectKeyValues(args.var);
-		const cliDefines = collectKeyValues(args.define);
-		const cliAlias = collectKeyValues(args.alias);
-
-		const accountId = args.dryRun ? undefined : await requireAuth(config);
-
-		const siteAssetPaths = getSiteAssetPaths(
-			config,
-			args.site,
-			args.siteInclude,
-			args.siteExclude
-		);
+		const props = await mergeDeployConfigAndArgs(config, args);
 
 		const beforeUpload = Date.now();
-		let name = getScriptName(args, config);
 
-		const ciOverrideName = getCIOverrideName();
-		let workerNameOverridden = false;
-		if (ciOverrideName !== undefined && ciOverrideName !== name) {
-			logger.warn(
-				`Failed to match Worker name. Your config file is using the Worker name "${name}", but the CI system expected "${ciOverrideName}". Overriding using the CI provided Worker name. Workers Builds connected builds will attempt to open a pull request to resolve this config name mismatch.`
-			);
-			name = ciOverrideName;
-			workerNameOverridden = true;
-		}
-
-		if (!name) {
-			throw new UserError(
-				'You need to provide a name when publishing a worker. Either pass it as a cli arg with `--name <name>` or in your config file as `name = "<name>"`',
-				{ telemetryMessage: "deploy command missing worker name" }
-			);
-		}
-
-		if (!args.dryRun) {
-			assert(accountId, "Missing account ID");
-			await verifyWorkerMatchesCITag(
-				config,
-				accountId,
-				name,
-				config.configPath
-			);
-		}
-
-		// We use the `userConfigPath` to compute the root of a project,
-		// rather than a redirected (potentially generated) `configPath`.
-		const projectRoot =
-			config.userConfigPath && path.dirname(config.userConfigPath);
-
-		const { sourceMapSize, versionId, workerTag, targets } = await deploy({
-			config,
-			accountId,
-			name,
-			rules: getRules(config),
-			entry,
-			env: args.env,
-			compatibilityDate: args.latest
-				? getTodaysCompatDate()
-				: args.compatibilityDate,
-			compatibilityFlags: args.compatibilityFlags,
-			vars: cliVars,
-			defines: cliDefines,
-			alias: cliAlias,
-			triggers: args.triggers,
-			jsxFactory: args.jsxFactory,
-			jsxFragment: args.jsxFragment,
-			tsconfig: args.tsconfig,
-			routes: args.routes,
-			domains: args.domains,
-			assetsOptions,
-			legacyAssetPaths: siteAssetPaths,
-			useServiceEnvironments: useServiceEnvironments(config),
-			minify: args.minify,
-			isWorkersSite: Boolean(args.site || config.site),
-			outDir: args.outdir,
-			outFile: args.outfile,
-			dryRun: args.dryRun,
-			metafile: args.metafile,
-			noBundle: !(args.bundle ?? !config.no_bundle),
-			keepVars: args.keepVars,
-			logpush: args.logpush,
-			uploadSourceMaps: args.uploadSourceMaps,
-			oldAssetTtl: args.oldAssetTtl,
-			projectRoot,
-			dispatchNamespace: args.dispatchNamespace,
-			experimentalAutoCreate: args.experimentalAutoCreate,
-			containersRollout: args.containersRollout,
-			strict: args.strict,
-			tag: args.tag,
-			message: args.message,
-			secretsFile: args.secretsFile,
-		});
+		const { sourceMapSize, versionId, workerTag, targets } =
+			await deploy(props);
 
 		writeOutput({
 			type: "deploy",
 			version: 1,
-			worker_name: name ?? null,
+			worker_name: props.name ?? null,
 			worker_tag: workerTag,
 			version_id: versionId,
 			targets,
 			wrangler_environment: args.env,
-			worker_name_overridden: workerNameOverridden,
+			worker_name_overridden: props.workerNameOverridden,
 		});
 
 		metrics.sendMetricsEvent(
 			"deploy worker script",
 			{
-				usesTypeScript: /\.tsx?$/.test(entry.file),
+				usesTypeScript: /\.tsx?$/.test(props.entry.file),
 				durationMs: Date.now() - beforeUpload,
 				sourceMapSize,
 			},

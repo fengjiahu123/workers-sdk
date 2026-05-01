@@ -41,9 +41,8 @@ export default async function triggersDeploy(
 ): Promise<string[] | void> {
 	const { config, accountId, name: scriptName } = props;
 
-	const schedules = props.triggers || config.triggers?.crons;
-	const routes =
-		props.routes ?? config.routes ?? (config.route ? [config.route] : []) ?? [];
+	const schedules = props.triggers;
+	const routes = props.routes ?? [];
 	const routesOnly: Array<Route> = [];
 	const customDomainsOnly: Array<RouteObject> = [];
 	validateRoutes(routes, props.assetsOptions);
