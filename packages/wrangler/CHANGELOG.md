@@ -1,5 +1,30 @@
 # wrangler
 
+## 4.87.1
+
+### Patch Changes
+
+- [#13765](https://github.com/cloudflare/workers-sdk/pull/13765) [`3020214`](https://github.com/cloudflare/workers-sdk/commit/3020214014066aafd2369469e92f4b91e979ebb4) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update dependencies of "miniflare", "wrangler"
+
+  The following dependency versions have been updated:
+
+  | Dependency | From         | To           |
+  | ---------- | ------------ | ------------ |
+  | workerd    | 1.20260430.1 | 1.20260501.1 |
+
+- [#13772](https://github.com/cloudflare/workers-sdk/pull/13772) [`194d75e`](https://github.com/cloudflare/workers-sdk/commit/194d75e3e9af63e60cf4c06b4be5faa92a739c8c) Thanks [@zakcutner](https://github.com/zakcutner)! - Fix `wrangler types` to generate `Fetcher` for `unsafe.bindings` entries with `type: "service"`
+
+  Previously, all entries in `unsafe.bindings` (other than `ratelimit`) generated a fallback `any` type. `wrangler types` now generates `Fetcher` for unsafe bindings declared with `type: "service"`, matching the type used for regular service bindings.
+
+- [#12974](https://github.com/cloudflare/workers-sdk/pull/12974) [`1127114`](https://github.com/cloudflare/workers-sdk/commit/11271143f0f1ab76497d395712842af8e1ca330d) Thanks [@ask-bonk](https://github.com/apps/ask-bonk)! - Fix `props` and fetcher-type service bindings being dropped in `unstable_getMiniflareWorkerOptions`
+
+  The post-processing in `unstable_getMiniflareWorkerOptions` was rebuilding `serviceBindings` from scratch, which silently dropped `props` on service bindings and dropped `fetcher`-type bindings entirely. It was also re-deriving `durableObjects` identically to what `buildMiniflareBindingOptions` already produces. Both have been removed; `buildMiniflareBindingOptions` now produces the final bindings unchanged.
+
+- [#13745](https://github.com/cloudflare/workers-sdk/pull/13745) [`1a5cc86`](https://github.com/cloudflare/workers-sdk/commit/1a5cc8680ead7ee02dd45b3e5720ad5dce415e58) Thanks [@edmundhung](https://github.com/edmundhung)! - fix: preserve request ports in `Origin` and `Referer` headers when using `wrangler dev --host`
+
+- Updated dependencies [[`3020214`](https://github.com/cloudflare/workers-sdk/commit/3020214014066aafd2369469e92f4b91e979ebb4), [`bb27219`](https://github.com/cloudflare/workers-sdk/commit/bb27219651142036180cb1d01650df48d5282800)]:
+  - miniflare@4.20260501.0
+
 ## 4.87.0
 
 ### Minor Changes
